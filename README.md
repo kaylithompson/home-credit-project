@@ -124,3 +124,15 @@ test_data <- process_test_data(
 | `aggregate_installments_payments()` | Aggregates installments_payments.csv to applicant level |
 | `join_aggregated_features()` | Joins all aggregated features to application data |
 | `ensure_column_consistency()` | Aligns test columns to match training data |
+
+
+## Model Card — Final Kaggle Model
+- Location: docs/model_card_final_kaggle_model_2.qmd  
+- Compiled HTML (generated): docs/model_card_final_kaggle_model_2.html  
+- Key artifacts required to render / reproduce:
+  - models/final_fit.rds — tidymodels workflow (final model)
+  - data/val_data.rds — OOF validation dataframe (same rows used to compute reported metrics)
+  - data/val_probs.rds — tibble with .pred_default (predicted OOF probabilities)
+  - docs/economic_summary.rds — economic summary produced by the notebook (optional; created by the provided script)
+- Reported summary (OOF / supplied): OOF AUC = 0.7645; Kaggle public AUC = 0.74597; validated OOF savings ≈ 134,267,311 (dataset currency).
+
