@@ -1,0 +1,181 @@
+---
+title: "Model Card — Final Kaggle Model (2)"
+author: "Positron Assistant"
+format:
+  html:
+    toc: true
+    code-fold: false
+    number-sections: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+# Executive summary
+
+This document describes the Final Kaggle Model (LightGBM) and validates the per‑loan decision rule p* = G/(G+L). Recommendation: use the per‑loan rule after calibration and operational audit. Validated OOF savings: ~134,267,311 (dataset currency).
+
+# Model details
+
+- Model name: Final Kaggle Model (2)  
+- Type: LightGBM (tidymodels workflow)  
+- Expected artifact: `models/final_fit.rds` (tidymodels workflow)  
+- Training / OOF summary (reported): n ≈ 61,503; OOF AUC = 0.7645; default ≈ 7.97%  
+- Key hyperparameters: trees = 2000, tree_depth = 6, learn_rate = 0.03, mtry = 30, sample_size = 0.8
+
+# Intended use
+
+Intended users: credit risk analysts and decisioning pipelines. Informs accept/reject decisions for consumer loans. Not designed for legal advice or automated collections actions without human oversight.
+
+# How to run this notebook
+
+This notebook expects the following objects or files before rendering:
+- models/final_fit.rds (tidymodels workflow containing fitted LightGBM)
+- data/val_data.rds (validation dataframe, same rows used for OOF reporting) OR an in‑environment `val_data`
+- data/val_probs.rds (tibble with .pred_default for val_data rows) OR an in‑environment `val_probs`
+- docs/economic_summary.rds (optional; if present will be displayed)
+
+# Performance metrics
+
+```{r}
+# load essentials (no printing)
+library(tidyverse)
+library(tidymodels)
+
+# helper: load artifacts if present
+if (file.exists("models/final_fit.rds")) final_fit <- readRDS("models/final_fit.rds")
+if (!exists("val_data") && file.exists("data/val_data.rds")) val_data <- readRDS("data/val_data.rds")
+if (!exists("val_probs") && file.exists("data/val_probs.rds")) val_probs <- readRDS("data/val_probs.rds")
+```
+
+Report OOF AUC (reproduce with your artifacts). Kaggle public AUC: 0.74597.
+
+# Decision threshold analysis — economics
+
+Inputs & assumptions (as provided)
+- Labels/probs: val_data$TARGET (1 = default), val_probs$.pred_default (OOF)  
+- Exposure: EAD = val_data$AMT_CREDIT  
+- Economics: r_gross = 12%, r_funding = 3%, term = 3 years, fee = 100, servicing = 50, LGD = 0.8, collection_cost = 0
+
+Key formulas
+- $$G_i = (r_{gross}-r_{funding}) \cdot \mathrm{EAD}_i \cdot \text{term} + \text{fee} - \text{servicing}$$
+- $$L_i = \mathrm{EAD}_i \cdot \mathrm{LGD} + \text{collection\_cost}$$
+- $$p^*_i = \dfrac{G_i}{G_i + L_i}$$
+- Reject if $\hat p_i \ge p^*_i$; approve when $\hat p_i < p^*_i$.
+
+```{r}
+# compute economics and validated OOF savings (requires val_data and val_probs)
+r_gross <- 0.12; r_funding <- 0.03; term <- 3; fee <- 100; servicing <- 50
+LGD <- 0.8; collection_cost <- 0
+
+if (exists("val_data") && exists("val_probs")) {
+  y <- ifelse(as.character(val_data$TARGET) %in% c("1","default"), 1L, 0L)
+  EAD <- val_data$AMT_CREDIT
+  G <- (r_gross - r_funding) * EAD * term + fee - servicing
+  L <- EAD * LGD + collection_cost
+  p_star <- G / (G + L)
+  p_hat <- val_probs$.pred_default
+
+  profit_i <- (1 - y) * G - y * L
+  profit_all <- sum(profit_i)
+  approve_model <- p_hat < p_star
+  profit_model <- sum(profit_i * as.numeric(approve_model))
+  savings <- profit_model - profit_all
+
+  economic_summary <- tibble(
+    n = length(y),
+    auc_oof = 0.7645,                      # replace if you recompute
+    auc_kaggle_public = 0.74597,
+    default_rate = mean(y),
+    mean_G = mean(G),
+    mean_L = mean(L),
+    mean_p_star = mean(p_star),
+    approved = sum(approve_model),
+    rejected = sum(!approve_model),
+    profit_all = profit_all,
+    profit_model = profit_model,
+    savings = savings,
+    savings_per_application = savings / length(y)
+  )
+
+  economic_summary
+} else {
+  tibble(note = "val_data and val_probs not found; place them in data/ or load into environment")
+}
+```
+
+Validated OOF results (from your run)
+- n = 61,503; OOF AUC = 0.7645; Kaggle public AUC = 0.74597; default ≈ 7.97%  
+- mean G ≈ 162,697; mean L ≈ 481,916; mean p* ≈ 0.2524  
+- approved = 58,534 (95.17%), rejected = 2,969 (4.83%)  
+- Profit (approve‑all): 7,091,241,698; Profit (per‑loan policy): 7,225,509,008  
+- Savings: 134,267,311 (dataset currency) ≈ 2,183 saved per application
+
+# Explainability (SHAP)
+
+We compute SHAP on a 1,000‑row sample for speed; the notebook reuses the saved workflow.
+
+```{r}
+library(fastshap); library(vip)
+
+if (exists("final_fit") && exists("val_data")) {
+  pred_wrapper <- function(object, newdata) predict(object, newdata, type = "prob")$.pred_default
+  set.seed(42)
+  sample_idx <- sample(seq_len(nrow(val_data)), size = min(1000, nrow(val_data)))
+  x_sample <- val_data[sample_idx, ] %>% select(-TARGET)
+  shap_vals <- fastshap::explain(final_fit, X = x_sample, pred_wrapper = pred_wrapper, nsim = 50)
+  shap_summary <- as.data.frame(abs(shap_vals)) %>% summarise(across(everything(), mean, na.rm = TRUE)) %>%
+    pivot_longer(everything(), names_to = "feature", values_to = "mean_abs_shap") %>%
+    arrange(desc(mean_abs_shap))
+  shap_summary %>% slice_head(n = 20)
+} else {
+  tibble(note = "final_fit or val_data not available for SHAP")
+}
+```
+
+Top predictive features (replace with the SHAP output): EXT_SOURCE_1, AMT_CREDIT, DAYS_BIRTH, DAYS_EMPLOYED, NAME_INCOME_TYPE.
+
+# Adverse‑action mapping
+
+Map the top predictors to human‑readable denial reasons (examples):
+- EXT_SOURCE_1 (low) → "Limited external credit history / low external credit score"  
+- AMT_CREDIT (high) → "Requested loan amount appears unaffordable"  
+- DAYS_EMPLOYED (short) → "Insufficient employment history"
+
+Provide 2–3 top contributing reasons per denied applicant when issuing adverse action notices.
+
+# Fairness analysis
+
+Compare approval rates by protected groups at the chosen per‑loan rule.
+
+```{r}
+if (exists("val_data") && exists("p_hat") && exists("p_star")) {
+  approved_flag <- p_hat < p_star
+  val_fair <- val_data %>% mutate(approved = approved_flag)
+  by_gender <- val_fair %>% group_by(CODE_GENDER) %>% summarise(n = n(), approve_rate = mean(approved))
+  by_edu <- val_fair %>% group_by(NAME_EDUCATION_TYPE) %>% summarise(n = n(), approve_rate = mean(approved))
+  list(by_gender = by_gender, by_edu = by_edu)
+} else {
+  tibble(note = "val_data or predictions not available for fairness analysis")
+}
+```
+
+Investigate gaps >5–10 percentage points; consider subgroup calibration and legal review.
+
+# Limitations & risks
+
+- Missing external bureau signals, recent inquiries, verified income, behavioral data.  
+- Model may proxy protected attributes — run dedicated bias mitigation.  
+- OOF economics assume production population match; validate and monitor.
+
+# Appendix — reproduction & files
+
+- Notebook: docs/model_card_final_kaggle_model_2.qmd  
+- Compiled HTML: docs/model_card_final_kaggle_model_2.html (render locally with Quarto)  
+- Expected artifacts: models/final_fit.rds, data/val_data.rds, data/val_probs.rds, docs/economic_summary.rds
+
+To render locally:
+- save final workflow: saveRDS(final_fit, "models/final_fit.rds")
+- ensure validation artifacts exist
+- run: quarto render docs/model_card_final_kaggle_model_2.qmd
