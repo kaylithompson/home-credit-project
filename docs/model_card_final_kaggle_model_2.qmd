@@ -1,6 +1,6 @@
 ---
-title: "Model Card — Final Kaggle Model (2)"
-author: "Positron Assistant"
+title: "Model Card — Final Kaggle Model"
+author: "Kayli Thompson"
 format:
   html:
     toc: true
