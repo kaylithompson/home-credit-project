@@ -6,7 +6,7 @@
 # feature engineering credit risk application data. Designed to maintain
 # consistency between training and test datasets.
 #
-# Author: Credit Risk Analysis Pipeline
+# Author: Kayli Thompson
 # Date: 2026-02-22
 #
 # =============================================================================
