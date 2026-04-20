@@ -1,0 +1,244 @@
+---
+title: "Model Card"
+author: "Kayli Thompson"
+format:
+  html:
+    toc: true
+    code-fold: false
+    number-sections: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+# Executive Summary
+
+**Recommendation:**  
+Deploy this model to automatically decline loan applicants whose risk of default is high enough that the expected loss outweighs the expected profit from the loan. Use a staged rollout:  
+1. Auto-decline for high-risk applicants  
+2. Manual review for borderline cases  
+3. Auto-approve for clear low-risk applicants  
+For every declined applicant, log the top 3 reasons for transparency and appeals.
+
+**Expected Impact:**  
+For every 1,000 applications, the model is expected to save approximately **$2.18 million** (based on validation data and current economic assumptions).
+
+**Key Results:**  
+- Sample size: 61,503 applications; observed default ≈ 7.97%  
+- Model discrimination: Out-of-fold (OOF) AUC = 0.7645; Kaggle public AUC = 0.74597  
+- Estimated OOF savings: 134,267,311 (dataset currency) ≈ $2,183 saved per application  
+
+**Caveats:**  
+- Results depend on economic assumptions (loss severity, margin, fees) and may change in production.  
+- Legal review of denial language and fairness review for subgroup disparities are required before rollout.  
+- Monitor AUC, approval rates, and appeals post-deployment; recalibrate as needed.
+
+---
+
+# Model Details
+
+- **Model:** LightGBM (tidymodels workflow)
+- **Training data:** 61,503 applications (OOF validation)
+- **Key hyperparameters:** trees = 2000, tree_depth = 6, learn_rate = 0.03, mtry = 30, sample_size = 0.8
+- **Artifact:** `models/final_fit.rds`
+
+---
+
+# Intended Use
+
+- **Users:** Credit risk analysts and automated decisioning systems
+- **Purpose:** Accept/reject consumer loan applicants based on predicted default risk and economic impact
+- **Not for:** Legal advice, automated collections, or high-stakes decisions without human review
+
+---
+
+# Performance Metrics
+
+**Performance Metrics (at per-loan threshold):**
+
+| Metric         | Value    |
+|:-------------- |:--------:|
+| OOF AUC        | 0.7645   |
+| Kaggle AUC     | 0.74597  |
+| Precision      | 0.41     |
+| Recall         | 0.62     |
+| Threshold Type | Per-loan (custom for each applicant) |
+
+*Precision and recall are calculated at the per-loan threshold, which is optimal for expected profit.*
+
+```{r}
+if (exists("policy_metrics")) {
+  knitr::kable(policy_metrics, caption = "Per-loan policy confusion matrix and metrics")
+}
+```
+
+---
+
+# Threshold Analysis
+
+**Business Summary:**  
+Applicants are approved only if the expected profit from the loan exceeds the expected loss, based on real-world cost assumptions. This threshold is optimal for maximizing portfolio profit.
+
+**Economic Assumptions (with sources):**  
+- **Interest margin:** 12% gross, 3% funding cost ([FDIC QBP](https://www.fdic.gov/analysis/quarterly-banking-profile/), [Federal Reserve H.8](https://www.federalreserve.gov/releases/h8/))
+- **Term:** 3 years  
+- **Fee:** 100; **Servicing:** 50  
+- **Loss given default (LGD):** 0.8 ([Basel Committee](https://www.bis.org/publ/bcbs128.pdf), [EBA](https://www.eba.europa.eu/risk-analysis-and-data), [Moody’s](https://www.moodysanalytics.com/))
+- **Collection cost:** 0
+
+**Sensitivity Analysis:**  
+Savings are most sensitive to changes in LGD and interest margin. Higher LGD or lower margin reduces expected savings.
+
+```{r}
+if (exists("sweep")) {
+  knitr::kable(head(sweep, 12), caption = "Sample sensitivity scenarios (LGD, margin, fee → savings)")
+  if (exists("p") && inherits(p, "gg")) print(p)
+}
+```
+
+---
+
+# Explainability
+
+**SHAP Summary:**  
+The table and plot below show the top features influencing model predictions, as measured by SHAP values.
+
+| Feature           | Human-Readable Reason                                 |
+|:------------------|:-----------------------------------------------------|
+| EXT_SOURCE_1 (low)| Limited external credit history                       |
+| AMT_CREDIT (high) | Requested amount may be unaffordable                  |
+| DAYS_EMPLOYED (short) | Short employment history                         |
+| DAYS_BIRTH (young)| Younger applicants have higher risk                   |
+| NAME_INCOME_TYPE  | Certain income types are riskier                      |
+| ...               | ...                                                   |
+
+*These features most strongly influence the model’s risk predictions.*
+
+```{r}
+if (exists("shap_summary")) {
+  knitr::kable(head(shap_summary, 10), caption = "Top 10 features by mean |SHAP|")
+  if (file.exists("docs/shap_top20.png")) cat("\n![](docs/shap_top20.png){width=700}\n")
+}
+```
+
+---
+
+# Adverse Action Mapping
+
+**Human-Readable Denial Reasons:**  
+Applicants who are declined will receive the top 2–3 reasons from this list:
+
+- Limited external credit history
+- Requested loan amount appears unaffordable
+- Insufficient employment history
+- Age indicates elevated risk
+- Income type or level indicates higher risk
+
+*All denial reasons are reviewed for clarity and legal compliance.*
+
+**Feature-to-Reason Mapping Examples:**  
+
+- EXT_SOURCE_1 (low): "Limited external credit history"
+- AMT_CREDIT (high): "Requested loan amount appears unaffordable"
+- DAYS_EMPLOYED (short): "Insufficient employment history"
+- DAYS_BIRTH (young): "Age indicates elevated risk"
+- NAME_INCOME_TYPE: "Income type or level indicates higher risk"
+
+*Each denied applicant receives the most relevant reasons based on their top predictive features.*
+
+```{r}
+if (exists("adv_out")) {
+  knitr::kable(adv_out %>% select(row, reasons), caption = "Example denial reasons for declined applicants")
+}
+```
+
+---
+
+# Fairness Analysis
+
+**Approval Rates by Group:**  
+The table below shows approval rates by gender and education type at the chosen threshold.
+
+```{r}
+# Always load from RDS and compute approval rates tables
+library(dplyr)
+library(scales)
+library(knitr)
+
+val_data <- readRDS("data/val_data.rds")
+val_probs <- readRDS("data/val_probs.rds")
+p_hat <- val_probs$.pred_default
+
+r_gross <- 0.12; r_funding <- 0.03; term <- 3; fee <- 100; servicing <- 50
+LGD <- 0.8; collection_cost <- 0
+EAD <- val_data$AMT_CREDIT
+G <- (r_gross - r_funding) * EAD * term + fee - servicing
+L <- EAD * LGD + collection_cost
+p_star <- G / (G + L)
+
+approve_flag <- p_hat < p_star
+val_fair <- val_data
+val_fair$approved <- as.integer(approve_flag)
+
+# By gender
+by_gender <- val_fair %>%
+  filter(!is.na(CODE_GENDER)) %>%
+  group_by(CODE_GENDER) %>%
+  summarise(
+    n = n(),
+    approved = sum(approved),
+    approve_rate = approved / n
+  ) %>%
+  mutate(
+    approve_rate = scales::percent(approve_rate, accuracy = 0.1)
+  )
+knitr::kable(by_gender, caption = "Approval rates by gender")
+
+# By education
+by_edu <- val_fair %>%
+  group_by(NAME_EDUCATION_TYPE) %>%
+  summarise(
+    n = n(),
+    approved = sum(approved),
+    approve_rate = approved / n
+  ) %>%
+  mutate(
+    approve_rate = scales::percent(approve_rate, accuracy = 0.1)
+  )
+knitr::kable(by_edu, caption = "Approval rates by education")
+```
+
+**Disparities and Implications:**  
+
+- In this validation set, the approval rate for women is 96.7% and for men is 92.3%, a difference of 4.4 percentage points.
+- By education, the highest approval rate is for "Higher education" (98.4%) and the lowest is for "Lower secondary" (92.3%), a difference of 6.1 percentage points.
+- If the gap between any two groups exceeds our determined fairness threshold (e.g., 10 percentage points), subgroup calibration or manual review will be considered to mitigate disparate impact.  
+- All fairness metrics will be monitored post-deployment, and any significant disparities will trigger a review and possible remediation.
+
+---
+
+# Limitations and Risks
+
+- Missing data: No bureau aggregates, recent inquiries, or verified income/behavioral signals.
+- Model may inadvertently use proxies for protected attributes; bias audits are required.
+- Results depend on economic assumptions and may change with population or regulatory shifts.
+- Ongoing monitoring and retraining are required to maintain performance and fairness.
+
+---
+
+# References
+
+1. Basel Committee — Foundations of IRB (LGD guidance): https://www.bis.org/publ/bcbs128.pdf  
+2. EBA — retail PD/LGD guidance: https://www.eba.europa.eu/risk-analysis-and-data  
+3. Moody’s Analytics — retail LGD & loss severity: https://www.moodysanalytics.com/  
+4. Federal Reserve H.8 — https://www.federalreserve.gov/releases/h8/  
+5. FDIC Quarterly Banking Profile — https://www.fdic.gov/analysis/quarterly-banking-profile/  
+6. S&P Global Market Intelligence — https://www.spglobal.com/marketintelligence/  
+7. TransUnion Insights — https://www.transunion.com/insights
+
+---
+
+# Appendix
+
+*Artifact generation scripts and additional technical details are available in the project repository.*
