@@ -2,137 +2,41 @@
 
 Kayli Thompson
 
-This is the Home Credit Default Risk Kaggle project. The goal of this project is to predict the probability of a client defaulting on a loan using various features provided in the dataset.
+## Business Problem
+Home Credit offers loans to customer segments typically overlooked by traditional lenders due to lower credit scores. Instead of relying solely on credit scores, Home Credit evaluates a broader set of applicant features to assess the likelihood of loan default.
 
----
+## Project Objective
+The goal of this project is to develop and optimize a predictive model that estimates the probability of a client defaulting on a loan, using the diverse features provided in the Home Credit dataset. This enables more inclusive, data-driven lending decisions while managing risk.
 
-## Credit Risk Preprocessing Functions
+## Solution to Business Problem
+To address the challenge of lending to customers with limited or low traditional credit scores, we developed a machine learning solution using a LightGBM model. This model analyzes a wide range of applicant features—including demographics, employment, income, and external credit sources—to estimate each applicant’s probability of default.
 
-### What This Script Does
+Crucially, instead of using a fixed cutoff, the decision threshold for loan approval is set individually for each applicant based on the expected profitability of their loan. A loan is approved only if the model predicts that the expected profit (from interest and fees) exceeds the expected loss (from potential default), given the applicant’s profile and loan terms. This approach enables Home Credit to make more inclusive, data-driven lending decisions that maximize expected profit while managing risk, going beyond what traditional score-based methods allow.
 
-The `credit_risk_preprocessing.R` script provides a complete preprocessing pipeline for credit risk modeling, designed to work with Home Credit default risk data. It transforms raw application data into analysis-ready features while ensuring consistency between training and test datasets.
+## My Contribution to the Project
+* Developed the final LightGBM model, which achieved the highest predictive performance in the group and was selected as the team’s production model.
+* Designed and implemented the profitability analysis, quantifying the business impact of model-driven decisions.
+* Created key charts and drafted the outline for the final presentation.
+* Coordinated team meetings and managed the project schedule to ensure timely progress and collaboration.
 
-#### Data Cleaning
-- **DAYS_EMPLOYED anomaly fix**: Replaces placeholder value (365243) with the training median and creates an indicator flag (`DAYS_EMPLOYED_ANOMALY`)
-- **EXT_SOURCE imputation**: Fills missing values in `EXT_SOURCE_1`, `EXT_SOURCE_2`, and `EXT_SOURCE_3` with training medians
-- **Missing value indicators**: Creates binary flags for all imputed variables to preserve missingness information
+## Business Value of Solution
+By implementing this LightGBM-based decision system, Home Credit can make more profitable and inclusive lending decisions. The model enables the company to approve loans for applicants who might otherwise be declined by traditional credit scoring, while still managing risk through a profitability-based threshold for each loan.
 
-#### Feature Engineering
+On the validation dataset, this approach is estimated to save approximately $2.18 million for every 1,000 loan applications compared to a baseline of approving all applicants. These savings result from more accurately identifying high-risk applicants and reducing losses from defaults, while still capturing revenue from safe loans. At scale, this translates to substantial financial impact and improved portfolio performance for the business.
 
-| Category | Features Created |
-|----------|------------------|
-| **Demographic** | `AGE_YEARS`, `EMPLOYED_YEARS`, `EMPLOYED_TO_AGE_RATIO` |
-| **Financial Ratios** | `CREDIT_TO_INCOME_RATIO`, `ANNUITY_TO_INCOME_RATIO`, `LOAN_TO_VALUE_RATIO`, `DOWN_PAYMENT_RATIO`, `PAYMENT_PERIOD_MONTHS`, `GOODS_TO_INCOME_RATIO`, `INCOME_PER_FAMILY_MEMBER`, `CREDIT_PER_FAMILY_MEMBER`, `INCOME_PER_EMPLOYED_YEAR`, `CREDIT_PER_EMPLOYED_YEAR`, `BUREAU_INQUIRY_RATIO` |
-| **External Score Combinations** | `EXT_SOURCE_MEAN`, `EXT_SOURCE_WEIGHTED`, `EXT_SOURCE_PRODUCT`, `EXT_SOURCE_MIN`, `EXT_SOURCE_MAX`, `EXT_SOURCE_RANGE` |
-| **Binned Variables** | `AGE_BIN`, `CREDIT_RATIO_BIN`, `EXT_SOURCE_BIN`, `ANNUITY_RATIO_BIN` |
+## Difficulties Faced
+Our group encountered several challenges during this project:
 
-#### Supplementary Data Aggregation
+* Domain Knowledge: Most team members were not familiar with the loan approval process or industry-specific terminology. We needed to invest time in understanding how lending decisions are made and what factors drive profitability and risk in consumer credit.
+* Modeling Techniques: Many of us had limited experience with advanced machine learning models, including LightGBM. We had to learn how to implement, tune, and interpret these models effectively.
+* AI Integration: This was our first project using AI tools to support model development, documentation, and analysis. We had to quickly adapt to new workflows and best practices for leveraging AI in a data science project.
 
-| Source File | Features Created |
-|-------------|------------------|
-| **bureau.csv** | `BUREAU_CREDIT_COUNT`, `BUREAU_ACTIVE_COUNT`, `BUREAU_CLOSED_COUNT`, `BUREAU_ACTIVE_RATIO`, `BUREAU_AMT_CREDIT_SUM`, `BUREAU_AMT_DEBT_SUM`, `BUREAU_DEBT_RATIO`, `BUREAU_AMT_OVERDUE_SUM`, `BUREAU_AMT_OVERDUE_MEAN`, `BUREAU_HAS_OVERDUE`, `BUREAU_CREDIT_PROLONGED_SUM`, `BUREAU_DAYS_CREDIT_MEAN`, `BUREAU_DAYS_CREDIT_UPDATE_MEAN` |
-| **previous_application.csv** | `PREV_APP_COUNT`, `PREV_APPROVED_COUNT`, `PREV_REFUSED_COUNT`, `PREV_CANCELED_COUNT`, `PREV_APPROVAL_RATE`, `PREV_REFUSAL_RATE`, `PREV_HAS_REFUSAL`, `PREV_AMT_APPLICATION_MEAN`, `PREV_AMT_CREDIT_MEAN`, `PREV_AMT_ANNUITY_MEAN`, `PREV_CREDIT_TO_APP_RATIO`, `PREV_DOWN_PAYMENT_MEAN`, `PREV_DAYS_DECISION_MEAN`, `PREV_DAYS_FIRST_DUE_MEAN`, `PREV_CNT_PAYMENT_MEAN`, `PREV_RATE_INTEREST_PRIMARY_MEAN`, `PREV_RATE_INTEREST_PRIV_MEAN`, `PREV_SELLERPLACE_AREA_MEAN` |
-| **installments_payments.csv** | `INSTAL_COUNT`, `INSTAL_LATE_COUNT`, `INSTAL_LATE_RATIO`, `INSTAL_DAYS_LATE_MEAN`, `INSTAL_DAYS_LATE_MAX`, `INSTAL_PAYMENT_RATIO_MEAN`, `INSTAL_UNDERPAID_COUNT`, `INSTAL_UNDERPAID_RATIO`, `INSTAL_AMT_PAYMENT_SUM`, `INSTAL_AMT_INSTALMENT_SUM` |
+Despite these difficulties, the team collaborated to overcome knowledge gaps and deliver a robust, business-focused solution.
 
-#### Train/Test Consistency
-- Computes imputation values and binning thresholds from **training data only**
-- Saves parameters to `preprocessing_params.rds` for reuse on test data
-- Ensures identical column structure between train and test (except `TARGET`)
+## What I Learned
+The most valuable lesson from this project was how to effectively integrate AI into a real-world data science workflow. I learned that it’s essential to actively drive the session with AI—providing clear direction, setting boundaries, and remaining in control—rather than expecting the AI to independently deliver a complete solution from a set of requirements.
 
----
+Throughout the project, I found that I needed to step back and consider the bigger picture, redirecting the AI when it pursued overly complex or inefficient paths. When the AI-generated code produced errors or failed to meet requirements, I learned to adjust my instructions and parameters to guide it toward a better outcome.
 
-### How to Run the Script
-
-#### Prerequisites
-
-```r
-# Required packages
-install.packages(c("tidyverse", "data.table"))
-```
-
-#### Basic Usage
-
-```r
-# 1. Source the functions
-source("credit_risk_preprocessing.R")
-
-# 2. Process training data (computes and saves all preprocessing parameters)
-train_result <- process_training_data(
-  app_train_path = "path/to/application_train.csv.zip",
-  bureau_path = "path/to/bureau.csv.zip",
-  prev_app_path = "path/to/previous_application.csv.zip",
-  installments_path = "path/to/installments_payments.csv.zip"
-)
-
-# 3. Extract processed training data
-train_data <- train_result$data
-
-# 4. Process test data using saved parameters (ensures consistency)
-test_data <- process_test_data(
-  app_test_path = "path/to/application_test.csv.zip",
-  train_result = train_result
-)
-
-# Alternative: Load parameters from file if train_result is not in memory
-test_data <- process_test_data(
-  app_test_path = "path/to/application_test.csv.zip",
-  params_path = "preprocessing_params.rds",
-  bureau_path = "path/to/bureau.csv.zip",
-  prev_app_path = "path/to/previous_application.csv.zip",
-  installments_path = "path/to/installments_payments.csv.zip"
-)
-```
-
----
-
-### Inputs and Outputs
-
-#### Required Input Files
-
-| File | Description | Key Columns Used |
-|------|-------------|------------------|
-| `application_train.csv` | Main training dataset with target variable | `SK_ID_CURR`, `TARGET`, `DAYS_EMPLOYED`, `DAYS_BIRTH`, `EXT_SOURCE_1/2/3`, `AMT_CREDIT`, `AMT_INCOME_TOTAL`, `AMT_ANNUITY`, `AMT_GOODS_PRICE`, `CNT_FAM_MEMBERS` |
-| `application_test.csv` | Test dataset for predictions | Same as train (excluding `TARGET`) |
-| `bureau.csv` | Credit bureau history | `SK_ID_CURR`, `CREDIT_ACTIVE`, `AMT_CREDIT_SUM`, `AMT_CREDIT_SUM_DEBT`, `AMT_CREDIT_SUM_OVERDUE`, `CREDIT_DAY_OVERDUE` |
-| `previous_application.csv` | Previous loan applications | `SK_ID_CURR`, `NAME_CONTRACT_STATUS`, `AMT_APPLICATION`, `AMT_CREDIT`, `AMT_ANNUITY`, `DAYS_DECISION` |
-| `installments_payments.csv` | Payment history | `SK_ID_CURR`, `DAYS_INSTALMENT`, `DAYS_ENTRY_PAYMENT`, `AMT_INSTALMENT`, `AMT_PAYMENT` |
-
-#### Outputs
-
-| Output | Description |
-|--------|-------------|
-| `train_result$data` | Processed training dataframe with 220 columns (122 original + 98 engineered) |
-| `train_result$params` | List containing imputation values, binning thresholds, and column names |
-| `train_result$bureau_agg` | Bureau data aggregated to applicant level |
-| `train_result$prev_app_agg` | Previous applications aggregated to applicant level |
-| `train_result$installments_agg` | Installments data aggregated to applicant level |
-| `preprocessing_params.rds` | Saved parameters file for processing test data |
-| Processed test dataframe | Same structure as training data (excluding `TARGET`) |
-
----
-
-### Function Reference
-
-| Function | Purpose |
-|----------|---------|
-| `process_training_data()` | Main pipeline for training data |
-| `process_test_data()` | Main pipeline for test data |
-| `clean_application_data()` | Fixes anomalies and imputes missing values |
-| `engineer_application_features()` | Creates demographic, financial, and binned features |
-| `aggregate_bureau_data()` | Aggregates bureau.csv to applicant level |
-| `aggregate_previous_applications()` | Aggregates previous_application.csv to applicant level |
-| `aggregate_installments_payments()` | Aggregates installments_payments.csv to applicant level |
-| `join_aggregated_features()` | Joins all aggregated features to application data |
-| `ensure_column_consistency()` | Aligns test columns to match training data |
-
-
-## Model Card — Final Kaggle Model
-- Location: docs/model_card_final_kaggle_model_2.qmd  
-- Compiled HTML (generated): docs/model_card_final_kaggle_model_2.html  
-- Key artifacts required to render / reproduce:
-  - models/final_fit.rds — tidymodels workflow (final model)
-  - data/val_data.rds — OOF validation dataframe (same rows used to compute reported metrics)
-  - data/val_probs.rds — tibble with .pred_default (predicted OOF probabilities)
-  - docs/economic_summary.rds — economic summary produced by the notebook (optional; created by the provided script)
-- Reported summary (OOF / supplied): OOF AUC = 0.7645; Kaggle public AUC = 0.74597; validated OOF savings ≈ 134,267,311 (dataset currency).
+Most importantly, I realized that the value of AI-generated work depends on my own understanding. If I can’t explain the solution to stakeholders in my own words, the AI’s output is of limited use. This project reinforced the importance of combining AI assistance with critical thinking and clear communication.
 
